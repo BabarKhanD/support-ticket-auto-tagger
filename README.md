@@ -18,3 +18,6 @@ Automatically categorize support tickets using Zero-Shot Learning to:
 | Precision    | 0.86  |
 | Recall       | 0.85  |
 | F1-Score     | 0.85  |
+
+## Acknowledgements
+This project was developed during my internship at **DeveloperHub Corporation**
