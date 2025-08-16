@@ -1,0 +1,78 @@
+import pandas as pd
+from transformers import pipeline
+import torch
+from sklearn.metrics import classification_report
+import matplotlib.pyplot as plt
+import time
+
+# 1. Data Loading with Progress
+print("🔄 Loading dataset...")
+start = time.time()
+try:
+    df = pd.read_csv("/content/ticket_helpdesk_labeled_multi_languages_english_spain_french_german.csv")[["queue", "text"]]
+    df = df.rename(columns={"queue": "tag"}).dropna()
+    print(f"✅ Loaded {len(df)} tickets in {time.time()-start:.1f}s")
+except Exception as e:
+    print(f"❌ Error loading file: {str(e)}")
+    raise
+
+# 2. Model Setup
+print("\n🔄 Loading classifier...")
+start = time.time()
+try:
+    classifier = pipeline(
+        "zero-shot-classification",
+        model="MoritzLaurer/deberta-v3-base-zeroshot-v1.1-all-33",  # Faster and more accurate
+        device="cuda" if torch.cuda.is_available() else "cpu"
+    )
+    print(f"✅ Model loaded in {time.time()-start:.1f}s")
+except Exception as e:
+    print(f"❌ Error loading model: {str(e)}")
+    raise
+
+# 3. Evaluation Setup
+categories = ["Hardware", "Software", "Accounting"]
+sample_size = min(50, df['tag'].value_counts().min())  # Balanced sample
+
+print(f"\n🔍 Evaluating on {sample_size} samples per category...")
+
+# 4. Prediction with Progress
+def predict_with_progress(texts):
+    results = []
+    for i, text in enumerate(texts):
+        if i % 10 == 0:
+            print(f"   Processing {i+1}/{len(texts)}...")
+        try:
+            result = classifier(text, candidate_labels=categories)
+            results.append(result['labels'][0])
+        except Exception as e:
+            print(f"⚠️ Error processing text {i}: {str(e)}")
+            results.append("Error")
+    return results
+
+# 5. Run Evaluation
+try:
+    eval_df = df.groupby('tag').apply(lambda x: x.sample(sample_size)).reset_index(drop=True)
+    eval_df['predicted'] = predict_with_progress(eval_df['text'].tolist())
+    
+    # 6. Results
+    print("\n📊 Results:")
+    print(classification_report(eval_df['tag'], eval_df['predicted']))
+    
+    # Confusion Matrix
+    plt.figure(figsize=(8,6))
+    pd.crosstab(eval_df['tag'], eval_df['predicted'], 
+                rownames=['Actual'], colnames=['Predicted']).plot.bar(stacked=True)
+    plt.title("Classification Results")
+    plt.tight_layout()
+    plt.show()
+    
+    # Show some examples
+    print("\n🔎 Sample Predictions:")
+    for i in range(3):
+        sample = eval_df.iloc[i]
+        print(f"\nActual: {sample['tag']} | Predicted: {sample['predicted']}")
+        print(f"Text: {sample['text'][:150]}...")
+        
+except Exception as e:
+    print(f"❌ Evaluation failed: {str(e)}")
